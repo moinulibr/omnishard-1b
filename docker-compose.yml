@@ -1,0 +1,53 @@
+version: '3.8'
+services:
+  # PHP Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omnishard-app
+    volumes:
+      - .:/var/www
+    networks:
+      - omnishard-network
+
+  # Redis for Bloom Filter
+  redis:
+    image: redis:alpine
+    container_name: omnishard-redis
+    networks:
+      - omnishard-network
+
+  # Central Database (Metadata)
+  metadata_db:
+    image: mysql:8.0
+    container_name: omnishard-metadata
+    environment:
+      MYSQL_DATABASE: metadata_db
+      MYSQL_ROOT_PASSWORD: root
+    networks:
+      - omnishard-network
+
+  # Database Shard 1
+  shard_1:
+    image: mysql:8.0
+    container_name: omnishard-shard-1
+    environment:
+      MYSQL_DATABASE: shard_1_db
+      MYSQL_ROOT_PASSWORD: root
+    networks:
+      - omnishard-network
+
+  # Database Shard 2
+  shard_2:
+    image: mysql:8.0
+    container_name: omnishard-shard-2
+    environment:
+      MYSQL_DATABASE: shard_2_db
+      MYSQL_ROOT_PASSWORD: root
+    networks:
+      - omnishard-network
+
+networks:
+  omnishard-network:
+    driver: bridge
