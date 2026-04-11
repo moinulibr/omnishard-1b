@@ -1,14 +1,21 @@
 services:
-  # PHP Application
+  # PHP Application (Unified Service)
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: omnishard-app
+    restart: unless-stopped
+    working_dir: /var/www
     volumes:
       - .:/var/www
     networks:
       - omnishard-network
+    depends_on:
+      - redis
+      - metadata_db
+      - shard_1
+      - shard_2
 
   # Redis for Bloom Filter
   redis:
@@ -31,6 +38,16 @@ services:
   shard_1:
     image: mysql:8.0
     container_name: omnishard-shard-1
+    environment:
+      MYSQL_DATABASE: shard_1_db
+      MYSQL_ROOT_PASSWORD: root
+    networks:
+      - omnishard-network
+
+  # Replica of Shard 1 (For Read Operations)
+  shard_1_replica:
+    image: mysql:8.0
+    container_name: omnishard-shard-1-replica
     environment:
       MYSQL_DATABASE: shard_1_db
       MYSQL_ROOT_PASSWORD: root

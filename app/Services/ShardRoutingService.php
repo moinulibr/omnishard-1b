@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -11,34 +12,28 @@ use Illuminate\Support\Facades\DB;
 class ShardRoutingService
 {
     /**
-     * Determine which shard a user belongs to using Metadata DB.
-     * * @param string $email
-     * @return object|null Returns mapping data (shard_id, phase_id) or null.
+     * Dynamically select a shard from global config.
+     * @return array
      */
-    public function getRoute(string $email): ?object
+    public function getNextAvailableDestination(): array
     {
-        return DB::connection('metadata')
-            ->table('global_users')
-            ->where('email', $email)
-            ->first(['id', 'shard_id', 'phase_id', 'shard_key']);
+        $shards = Config::get('sharding.active_shards');
+        $selectedShard = $shards[array_rand($shards)]; // Global management
+
+        return [
+            'shard_name' => $selectedShard,
+            'shard_id'   => (int) filter_var($selectedShard, FILTER_SANITIZE_NUMBER_INT),
+            'phase_id'   => Config::get('sharding.current_phase'),
+            'shard_key'  => 'region_asia'
+        ];
     }
 
     /**
-     * Decide the best shard for a new registration. 
-     * Logic can be Round-robin, Least-connection, or static.
-     * * @return array Configuration for the new user.
+     * Get all registered shards from config.
+     * Useful for Migrations or Mass-Seeding.
      */
-    public function getDestinationForNewUser(): array
+    public function getAllShards(): array
     {
-        // Simple Logic: Currently we have 2 shards. 
-        // We can use a random or load-balanced approach.
-        $shardId = rand(1, 2);
-
-        return [
-            'shard_id'   => $shardId,
-            'shard_name' => "shard_" . $shardId,
-            'phase_id'   => 1, // Current architecture phase
-            'shard_key'  => 'region_asia' // Example logical key
-        ];
+        return Config::get('sharding.active_shards');
     }
 }
