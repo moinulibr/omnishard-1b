@@ -1,5 +1,5 @@
 services:
-  # PHP Application (Unified Service)
+  # PHP Application
   app:
     build:
       context: .
@@ -11,56 +11,73 @@ services:
       - .:/var/www
     networks:
       - omnishard-network
-    depends_on:
-      - redis
-      - metadata_db
-      - shard_1
-      - shard_2
 
-  # Redis for Bloom Filter
+  # Redis for Shard Mapping & Bloom Filter
   redis:
     image: redis:alpine
     container_name: omnishard-redis
+    ports:
+      - "6379:6379" # DBeaver/Redis Insight এর জন্য
     networks:
       - omnishard-network
 
-  # Central Database (Metadata)
+  # Central Metadata Database
   metadata_db:
     image: mysql:8.0
     container_name: omnishard-metadata
     environment:
       MYSQL_DATABASE: metadata_db
       MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
     networks:
       - omnishard-network
 
-  # Database Shard 1
+  # Shard 1 - Master
   shard_1:
     image: mysql:8.0
     container_name: omnishard-shard-1
     environment:
       MYSQL_DATABASE: shard_1_db
       MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
     networks:
       - omnishard-network
 
-  # Replica of Shard 1 (For Read Operations)
+  # Shard 1 - Replica
   shard_1_replica:
     image: mysql:8.0
     container_name: omnishard-shard-1-replica
     environment:
       MYSQL_DATABASE: shard_1_db
       MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3308:3306"
     networks:
       - omnishard-network
 
-  # Database Shard 2
+  # Shard 2 - Master
   shard_2:
     image: mysql:8.0
     container_name: omnishard-shard-2
     environment:
       MYSQL_DATABASE: shard_2_db
       MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3309:3306"
+    networks:
+      - omnishard-network
+
+  # Shard 2 - Replica (নতুন যোগ করা হয়েছে)
+  shard_2_replica:
+    image: mysql:8.0
+    container_name: omnishard-shard-2-replica
+    environment:
+      MYSQL_DATABASE: shard_2_db
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3310:3306"
     networks:
       - omnishard-network
 
