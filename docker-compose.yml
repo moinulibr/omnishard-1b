@@ -14,10 +14,11 @@ services:
 
   # Redis for Shard Mapping & Bloom Filter
   redis:
-    image: redis:alpine
+    image: redis/redis-stack-server:latest
     container_name: omnishard-redis
     ports:
-      - "6379:6379" # DBeaver/Redis Insight এর জন্য
+      - "6379:6379"
+      - "8001:8001" # RedisInsight (To show the Redis Browser)
     networks:
       - omnishard-network
 
