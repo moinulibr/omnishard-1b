@@ -11,6 +11,7 @@
      */
     class SyncBloomFilter extends Command
     {
+        
         /** @var string */
         protected $signature = 'sync:bloom';
 
@@ -25,7 +26,11 @@
          * Execute the console command.
          * @return void
          */
-        
+
+    /**
+     * Execute the console command.
+     * @return void
+     */
     /**
      * Execute the console command.
      * @return void
@@ -40,16 +45,17 @@
             $this->info("\nFound {$count} users in {$shard}. Starting sync...");
 
             DB::connection($shard)->table('users')->orderBy('id')->chunk(2000, function ($users) use ($shard) {
-                // We use Redis::connection() to ensure we are talking to the correct driver
+                // We are calling the raw Redis connection to bypass Laravel's abstraction limits
                 Redis::pipeline(function ($pipe) use ($users, $shard) {
-                    foreach ($users as $user) {
-                        // BF.ADD via rawCommand/command inside pipeline
-                        $pipe->command('BF.ADD', ['user_bloom', $user->email]);
-                        $pipe->set("map:email:{$user->email}", $shard);
+                    foreach ($users as $users_chunk) {
+                        // Native PhpRedis call format inside pipeline
+                        // 'bf_add' will be automatically converted to 'BF.ADD' by the driver
+                        $pipe->rawCommand('BF.ADD', 'user_bloom', $users_chunk->email);
+                        $pipe->set("map:email:{$users_chunk->email}", $shard);
 
-                        if ($user->phone) {
-                            $pipe->command('BF.ADD', ['user_bloom', $user->phone]);
-                            $pipe->set("map:phone:{$user->phone}", $shard);
+                        if ($users_chunk->phone) {
+                            $pipe->rawCommand('BF.ADD', 'user_bloom', $users_chunk->phone);
+                            $pipe->set("map:phone:{$users_chunk->phone}", $shard);
                         }
                     }
                 });
