@@ -19,6 +19,25 @@ class UserSearchService
         $this->userRepo = $userRepo;
     }
 
+    public function findUserByIdentifier(string $identifier)
+    {
+        //
+        $type = filter_var($identifier, FILTER_VALIDATE_EMAIL) ? 'email' : 'phone';
+
+        //
+        if (!Redis::executeRaw(['BF.EXISTS', 'user_bloom', $identifier])) {
+            return null;
+        }
+
+        // 
+        $shard = Redis::get("map:{$type}:{$identifier}");
+        if (!$shard) return null;
+
+        // 
+        return $this->userRepo->findInShard($identifier, $type, $shard);
+    }
+
+
     /**
      * Search strategy: Bloom Filter -> Redis Map -> Shard Repository.
      * * @param string $identifier
@@ -38,4 +57,6 @@ class UserSearchService
         // 3. Fetch via Repository
         return $this->userRepo->findInShard($identifier, $type, $shard);
     }
+
+
 }
