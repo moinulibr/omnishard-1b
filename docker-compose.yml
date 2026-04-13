@@ -5,12 +5,16 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: omnishard-app
+    ports:
+      - "8000:8000" # পিসি'র ৮০০০ পোর্ট কন্টেইনারের ৮০০০ এ যাবে
     restart: unless-stopped
     working_dir: /var/www
     volumes:
       - .:/var/www
     networks:
       - omnishard-network
+    # এটি যুক্ত করুন যাতে কন্টেইনার স্টার্ট হলেই সার্ভার চালু হয়
+    command: php artisan serve --host=0.0.0.0 --port=8000
 
   # Redis for Shard Mapping & Bloom Filter
   redis:

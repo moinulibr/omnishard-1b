@@ -2,47 +2,40 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\DB;
+use App\Repositories\Interfaces\UserRepositoryInterface;
 use Illuminate\Support\Facades\Redis;
 
 /**
  * Class UserSearchService
- * High-performance service to route and fetch user data across shards.
+ * Orchestrates Bloom Filter, Redis Mapping, and Repository calls.
  */
 class UserSearchService
 {
+    /** @var UserRepositoryInterface */
+    protected $userRepo;
+
+    public function __construct(UserRepositoryInterface $userRepo)
+    {
+        $this->userRepo = $userRepo;
+    }
+
     /**
-     * Finds a user by email or phone using Redis-first routing.
+     * Search strategy: Bloom Filter -> Redis Map -> Shard Repository.
      * * @param string $identifier
-     * @param string $type ('email' or 'phone')
+     * @param string $type
      * @return object|null
      */
-    public function findUser(string $identifier, string $type = 'email'): ?object
+    public function getRoutedUser(string $identifier, string $type): ?object
     {
-        // Step 1: Check Bloom Filter (Is it even possible that this user exists?)
+        // 1. Bloom Filter Check
         $exists = Redis::executeRaw(['BF.EXISTS', 'user_bloom', $identifier]);
+        if (!$exists) return null;
 
-        if (!$exists) {
-            return null; // Instant rejection, zero DB load
-        }
-
-        // Step 2: Get Shard mapping from Redis
+        // 2. Get Shard from Redis
         $shard = Redis::get("map:{$type}:{$identifier}");
+        if (!$shard) return null;
 
-        if (!$shard) {
-            // Fallback: Check Metadata DB if Redis mapping is missing
-            $metadata = DB::connection('metadata')->table('global_users')
-                ->where($type, $identifier)
-                ->first();
-
-            if (!$metadata) return null;
-            $shard = $metadata->shard_id;
-        }
-
-        // Step 3: Fetch data from the Shard's REPLICA
-        // Laravel automatically uses the 'read' config (replica) for this connection
-        return DB::connection($shard)->table('users')
-            ->where($type, $identifier)
-            ->first();
+        // 3. Fetch via Repository
+        return $this->userRepo->findInShard($identifier, $type, $shard);
     }
 }
