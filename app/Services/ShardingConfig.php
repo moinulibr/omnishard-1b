@@ -4,39 +4,39 @@ namespace App\Services;
 
 /**
  * Class ShardingConfig
- * Controls the Global Sharding Topology and Phase Management.
+ * Manages the global sharding topology and dynamic phase routing.
  */
 class ShardingConfig
 {
     /**
-     * Define the architecture topology.
-     * In a real system, this could come from a JSON file or a cached Metadata DB query.
+     * Get the global sharding topology.
+     * Status: 'active' (accepts new writes), 'legacy' (read-only/existing data).
+     * * @return array
      */
-    private function getTopology(): array
+    public function getTopology(): array
     {
         return [
             1 => [
                 'phase_no' => 1,
-                'status'   => 'legacy', // Data exists here, but no new registrations
+                'status'   => 'active', // Currently we are in Phase 1
                 'shards'   => [
                     1 => 'shard_1',
                     2 => 'shard_2'
                 ]
             ],
+            // Future phases will be added here
+            /*
             2 => [
                 'phase_no' => 2,
-                'status'   => 'active', // Currently running for new users
-                'shards'   => [
-                    3 => 'shard_3',
-                    4 => 'shard_4',
-                    5 => 'shard_5'
-                ]
+                'status'   => 'upcoming',
+                'shards'   => [3 => 'shard_3', 4 => 'shard_4']
             ]
+            */
         ];
     }
 
     /**
-     * Get the currently running phase for new registrations.
+     * Get the current active phase for registration.
      */
     public function getActivePhase(): array
     {
@@ -44,7 +44,7 @@ class ShardingConfig
     }
 
     /**
-     * Get a random shard from the active phase.
+     * Pick a random shard from the active phase.
      */
     public function getTargetShardForNewRegistration(): array
     {
