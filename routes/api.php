@@ -9,4 +9,11 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::get('/users/search', [UserController::class, 'search']);
+
+Route::prefix('users')->group(function () {
+    // Search User (GET)
+    Route::get('/search', [UserController::class, 'search']);
+
+    // Register/Store User (POST)
+    Route::post('/', [UserController::class, 'store']);
+});

@@ -26,4 +26,14 @@ class UserRepository implements UserRepositoryInterface
             ->where($type, $identifier)
             ->first();
     }
+
+    /**
+     * @inheritDoc
+     */
+    public function createInShard(array $data, string $shard): int
+    {
+        return DB::connection($shard)
+            ->table('users')
+            ->insertGetId($data);
+    }
 }
