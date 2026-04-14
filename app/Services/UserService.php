@@ -10,75 +10,68 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Class UserService
- * Manages sharded user lifecycle, authentication, and global indexing.
+ * Orchestrates user lifecycle across multiple shards and metadata management.
  */
 class UserService
 {
     protected $userRepo;
+    protected $shardingConfig;
 
-    public function __construct(UserRepositoryInterface $userRepo)
+    public function __construct(UserRepositoryInterface $userRepo, ShardingConfig $shardingConfig)
     {
         $this->userRepo = $userRepo;
+        $this->shardingConfig = $shardingConfig;
     }
 
     /**
-     * Register and Shard User (Phase 1 Logic)
+     * Register a user with Dynamic Phase & Shard Selection.
      */
     public function registerUser(array $data): object
     {
-        // Phase 1: Using 2 Shards
-        $shardMap = ['shard_1' => 1, 'shard_2' => 2];
-        $selectedShard = array_rand($shardMap);
-        $shardNumericId = $shardMap[$selectedShard];
-        $currentPhaseId = 1;
-
+        $target = $this->shardingConfig->getTargetShardForNewRegistration();
         $userId = (int) (microtime(true) * 1000);
 
-        return DB::transaction(function () use ($userId, $data, $selectedShard, $shardNumericId, $currentPhaseId) {
-            // 1. Write to Shard (Master)
+        return DB::transaction(function () use ($userId, $data, $target) {
+            // 1. Create in Shard Master
             $this->userRepo->createInShard([
                 'id'         => $userId,
                 'name'       => $data['name'],
                 'email'      => $data['email'],
                 'phone'      => $data['phone'],
                 'password'   => Hash::make($data['password']),
-                'shard_key'  => $selectedShard,
+                'shard_key'  => $target['shard_key'],
                 'created_at' => now(),
                 'updated_at' => now(),
-            ], $selectedShard);
+            ], $target['shard_key']);
 
-            // 2. Write to Metadata DB
+            // 2. Insert into Metadata DB
             DB::connection('metadata')->table('global_users')->insert([
                 'id'         => $userId,
                 'email'      => $data['email'],
                 'phone'      => $data['phone'],
-                'shard_id'   => $shardNumericId,
-                'shard_key'  => $selectedShard,
-                'phase_id'   => $currentPhaseId,
+                'shard_id'   => $target['shard_id'],
+                'shard_key'  => $target['shard_key'],
+                'phase_id'   => $target['phase_id'],
                 'created_at' => now(),
             ]);
 
-            // 3. Update Redis (Using simple keys to avoid prefix confusion in CLI)
-            $redis = Redis::connection();
-            $redis->executeRaw(['BF.ADD', 'user_bloom', $data['email']]);
-            $redis->set("map:email:{$data['email']}", $selectedShard);
-            $redis->set("map:id:{$userId}", $selectedShard);
+            // 3. Global Indexing (Redis)
+            $this->updateRedisIndexes($userId, $data['email'], $data['phone'], $target['shard_key']);
 
             return (object) [
                 'id' => $userId,
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'shard' => $selectedShard
+                'shard' => $target['shard_key']
             ];
         });
     }
 
     /**
-     * Authentication Logic for Sharded Environment
+     * Authenticate user across shards.
      */
     public function login(string $email, string $password)
     {
-        // Find shard first
         $user = $this->findUserByIdentifier($email);
 
         if (!$user || !Hash::check($password, $user->password)) {
@@ -89,17 +82,15 @@ class UserService
     }
 
     /**
-     * Search with Replica Support & Self-Healing
+     * Find user using Bloom Filter -> Redis -> Metadata DB (Self-healing).
      */
     public function findUserByIdentifier(string $identifier): ?object
     {
         $type = filter_var($identifier, FILTER_VALIDATE_EMAIL) ? 'email' : 'phone';
         $redis = Redis::connection();
 
-        // 1. Try Redis
         $shard = $redis->get("map:{$type}:{$identifier}");
 
-        // 2. Phase 1 Fallback: Metadata DB
         if (!$shard) {
             $metadata = DB::connection('metadata')->table('global_users')
                 ->where($type, $identifier)->first();
@@ -107,11 +98,74 @@ class UserService
             if (!$metadata) return null;
             $shard = $metadata->shard_key;
 
-            // Re-warm Redis
+            // Self-heal Redis mapping
             $redis->set("map:{$type}:{$identifier}", $shard);
         }
 
-        // 3. Read from Shard (Replica automatically used by Laravel read configuration)
         return $this->userRepo->findInShard($identifier, $type, $shard);
+    }
+
+    /**
+     * Update User Info across Shard and Metadata.
+     */
+    public function updateUser(int $id, array $data): bool
+    {
+        $metadata = DB::connection('metadata')->table('global_users')->where('id', $id)->first();
+        if (!$metadata) return false;
+
+        $shard = $metadata->shard_key;
+
+        return DB::transaction(function () use ($id, $data, $shard, $metadata) {
+            // Update in Shard
+            $this->userRepo->updateInShard($id, $data, $shard);
+
+            // Update Metadata if email/phone changed
+            if (isset($data['email']) || isset($data['phone'])) {
+                DB::connection('metadata')->table('global_users')
+                    ->where('id', $id)
+                    ->update(array_intersect_key($data, array_flip(['email', 'phone'])));
+
+                // Refresh Redis Indexes
+                $this->updateRedisIndexes($id, $data['email'] ?? $metadata->email, $data['phone'] ?? $metadata->phone, $shard);
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * Delete User from Shard, Metadata and Redis.
+     */
+    public function deleteUser(int $id): bool
+    {
+        $metadata = DB::connection('metadata')->table('global_users')->where('id', $id)->first();
+        if (!$metadata) return false;
+
+        $shard = $metadata->shard_key;
+
+        return DB::transaction(function () use ($id, $shard, $metadata) {
+            $this->userRepo->deleteInShard($id, $shard);
+            DB::connection('metadata')->table('global_users')->where('id', $id)->delete();
+
+            // Clean up Redis
+            $redis = Redis::connection();
+            $redis->del("map:email:{$metadata->email}");
+            $redis->del("map:phone:{$metadata->phone}");
+            $redis->del("map:id:{$id}");
+
+            return true;
+        });
+    }
+
+    /**
+     * Helper to refresh Redis mappings.
+     */
+    private function updateRedisIndexes($id, $email, $phone, $shard)
+    {
+        $redis = Redis::connection();
+        $redis->executeRaw(['BF.ADD', 'user_bloom', $email]);
+        $redis->set("map:email:{$email}", $shard);
+        $redis->set("map:phone:{$phone}", $shard);
+        $redis->set("map:id:{$id}", $shard);
     }
 }

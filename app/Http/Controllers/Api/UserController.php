@@ -3,72 +3,79 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\UserSearchRequest;
 use App\Http\Requests\UserStoreRequest;
 use App\Http\Resources\UserResource;
 use App\Services\UserService;
 use App\Traits\ApiResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
-/**
- * Class UserController
- * Manages user-related operations including registration and sharded search.
- */
 class UserController extends Controller
 {
     use ApiResponse;
 
-    /** @var UserService */
     protected $userService;
 
-    /**
-     * UserController constructor.
-     * * @param UserService $userService
-     */
     public function __construct(UserService $userService)
     {
         $this->userService = $userService;
     }
 
-    /**
-     * Search for a user across shards using an identifier (email/phone).
-     *
-     * @param UserSearchRequest $request
-     * @return JsonResponse
-     */
-    public function search(UserSearchRequest $request): JsonResponse
-    {
-        $startTime = microtime(true);
-
-        $user = $this->userService->findUserByIdentifier($request->q);
-
-        $latency = number_format(microtime(true) - $startTime, 5);
-
-        return $user
-            ? $this->successResponse(new UserResource($user), 'User found', ['latency' => "{$latency}s"])
-            : $this->errorResponse('User not found', 404);
-    }
-
-    /**
-     * Register a new user and distribute the data across available shards.
-     *
-     * @param UserStoreRequest $request
-     * @return JsonResponse
-     */
     public function store(UserStoreRequest $request): JsonResponse
     {
         try {
-            // Using the correctly named property $userService
             $user = $this->userService->registerUser($request->validated());
-
-            return $this->successResponse(
-                new UserResource($user),
-                'User registered and sharded successfully',
-                [],
-                201
-            );
+            return $this->successResponse(new UserResource($user), 'User registered successfully', [], 201);
         } catch (\Exception $e) {
             return $this->errorResponse('Registration failed', 500, $e->getMessage());
         }
+    }
+
+    public function login(Request $request): JsonResponse
+    {
+        $request->validate(['email' => 'required|email', 'password' => 'required']);
+
+        try {
+            $user = $this->userService->login($request->email, $request->password);
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return $this->successResponse([
+                'user' => new UserResource($user),
+                'access_token' => $token,
+                'token_type' => 'Bearer'
+            ], 'Login successful');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Login failed', 401, $e->getMessage());
+        }
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        $user = $this->userService->findUserByIdentifier($request->q);
+        return $user
+            ? $this->successResponse(new UserResource($user), 'User found')
+            : $this->errorResponse('User not found', 404);
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $updated = $this->userService->updateUser($id, $request->all());
+        return $updated
+            ? $this->successResponse(null, 'User updated successfully')
+            : $this->errorResponse('Update failed', 400);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $deleted = $this->userService->deleteUser($id);
+        return $deleted
+            ? $this->successResponse(null, 'User deleted successfully')
+            : $this->errorResponse('Delete failed', 400);
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        $request->user()->currentAccessToken()->delete();
+        return $this->successResponse(null, 'Logged out successfully');
     }
 }
