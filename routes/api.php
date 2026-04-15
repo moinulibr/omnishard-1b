@@ -9,6 +9,7 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::post('/login', [UserController::class, 'login']);
 
 Route::prefix('users')->group(function () {
     // Search User (GET)
@@ -16,4 +17,6 @@ Route::prefix('users')->group(function () {
 
     // Register/Store User (POST)
     Route::post('/', [UserController::class, 'store']);
+    //delete user
+    Route::delete('/{id}', [UserController::class, 'destroy']);
 });

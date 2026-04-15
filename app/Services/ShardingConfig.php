@@ -2,59 +2,78 @@
 
 namespace App\Services;
 
-/**
- * Class ShardingConfig
- * Manages the global sharding topology and dynamic phase routing.
- */
 class ShardingConfig
 {
-    /**
-     * Get the global sharding topology.
-     * Status: 'active' (accepts new writes), 'legacy' (read-only/existing data).
-     * * @return array
-     */
     public function getTopology(): array
     {
+        //shard (list) config under phase 
         return [
             1 => [
                 'phase_no' => 1,
-                'status'   => 'active', // Currently we are in Phase 1
+                'status'   => 'active',
                 'shards'   => [
-                    1 => 'shard_1',
-                    2 => 'shard_2'
+                    1 => [
+                        'shard_key'  => 'shard_1',//unique
+                        'shard_name' => 'Asia South 1',
+                        'region'     => 'region_asia'
+                    ],
+                    2 => [
+                        'shard_key'  => 'shard_2',//unique
+                        'shard_name' => 'Asia South 2',
+                        'region'     => 'region_asia'
+                    ]
                 ]
             ],
             // Future phases will be added here
-            /*
-            2 => [
+            /* 2 => [
                 'phase_no' => 2,
                 'status'   => 'upcoming',
-                'shards'   => [3 => 'shard_3', 4 => 'shard_4']
-            ]
-            */
+                'shards'   => [
+                    3 => [
+                        'shard_key'  => 'shard_3',//unique
+                        'shard_name' => 'Asia South 3',
+                        'region'     => 'region_asia'
+                    ],
+                    4 => [
+                        'shard_key'  => 'shard_4',//unique
+                        'shard_name' => 'Asia South 4',
+                        'region'     => 'region_asia'
+                    ]
+                ]
+            ] */
         ];
     }
+    
 
-    /**
-     * Get the current active phase for registration.
-     */
     public function getActivePhase(): array
     {
         return collect($this->getTopology())->firstWhere('status', 'active');
     }
 
-    /**
-     * Pick a random shard from the active phase.
-     */
     public function getTargetShardForNewRegistration(): array
     {
         $activePhase = $this->getActivePhase();
-        $shardKey = array_rand($activePhase['shards']);
+        $shardId = array_rand($activePhase['shards']);
+        $shardDetails = $activePhase['shards'][$shardId];
 
         return [
-            'phase_id'  => $activePhase['phase_no'],
-            'shard_id'  => $shardKey,
-            'shard_key' => $activePhase['shards'][$shardKey]
+            'phase_id'   => $activePhase['phase_no'],
+            'shard_id'   => $shardId,
+            'shard_key'  => $shardDetails['shard_key'],
+            'shard_name' => $shardDetails['shard_name'],
+            'region'     => $shardDetails['region']
         ];
+    }
+
+    // Here will be implemented ShardRoutingService
+    public function getAllShards(): array
+    {
+        $allShards = [];
+        foreach ($this->getTopology() as $phase) {
+            foreach ($phase['shards'] as $shard) {
+                $allShards[] = $shard['shard_key'];
+            }
+        }
+        return $allShards;
     }
 }

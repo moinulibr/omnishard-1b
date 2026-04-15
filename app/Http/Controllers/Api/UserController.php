@@ -45,7 +45,7 @@ class UserController extends Controller
                 'token_type' => 'Bearer'
             ], 'Login successful');
         } catch (\Exception $e) {
-            return $this->errorResponse('Login failed', 401, $e->getMessage());
+            return $this->errorResponse('Login failed - ', 401, $e->getMessage());
         }
     }
 

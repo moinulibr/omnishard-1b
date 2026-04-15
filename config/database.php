@@ -23,12 +23,13 @@ return [
 
         'shard_1' => [
             'driver' => 'mysql',
-            'read' => [
+            'host' => 'omnishard-shard-1',
+            /* 'read' => [
                 'host' => ['omnishard-shard-1-replica'],
             ],
             'write' => [
                 'host' => ['omnishard-shard-1'],
-            ],
+            ], */
             'sticky' => true,
             'database' => 'shard_1_db',
             'username' => 'root',
@@ -39,12 +40,13 @@ return [
 
         'shard_2' => [
             'driver' => 'mysql',
-            'read' => [
+            'host' => 'omnishard-shard-2',
+            /* 'read' => [
                 'host' => ['omnishard-shard-2-replica'],
             ],
             'write' => [
                 'host' => ['omnishard-shard-2'],
-            ],
+            ], */
             'sticky' => true,
             'database' => 'shard_2_db',
             'username' => 'root',

@@ -26,4 +26,7 @@ interface UserRepositoryInterface
      * @return int
      */
     public function createInShard(array $data, string $shard): int;
+
+    public function updateInShard(int $id, array $data, string $shard): bool;
+    public function deleteInShard(int $id, string $shard): bool;
 }
