@@ -20,8 +20,8 @@ class UserResource extends JsonResource
             'full_name'  => $this->name ?? null,
             'email'      => $this->email ?? null,
             'phone'      => $this->phone ?? null,
-            'shard'      => $this->shard_key ?? null, // সরাসরি কানেকশন নাম দেখাচ্ছে
-            'phase'      => $this->phase_id ?? null, // ইউজার কোন ফেইজের মেম্বার
+            'shard'      => $this->shard_key ?? null,
+            'phase'      => $this->phase_id ?? null,
             'joined_at'  => isset($this->created_at)
                 ? Carbon::parse($this->created_at)->toDateTimeString()
                 : null,

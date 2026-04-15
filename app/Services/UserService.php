@@ -79,7 +79,7 @@ class UserService
                     ->where('id', $id)
                     ->update($updateData);
 
-                // এখানে নিশ্চিত করছি যে যদি নতুন ইমেইল/ফোন না থাকে তবে মেটাডাটা থেকে নিবে
+                //If the new email/phone is not there, then it will be fetched from the metadata
                 $currentEmail = $data['email'] ?? $metadata->email;
                 $currentPhone = $data['phone'] ?? $metadata->phone;
 
@@ -108,9 +108,9 @@ class UserService
         $userData = $this->userRepo->findInShard($identifier, $type, $shard);
         if (!$userData) return null;
 
-        // ডাটাগুলোকে অ্যারেতে কনভার্ট করে মডেলে ঢুকাতে হবে
+        //Those data will be converted into an array and then converted into a model
         $user = new User();
-        $user->forceFill((array) $userData); // এটি নিশ্চিত করবে আইডি এবং ফোন সব ফিল্ড আসবে
+        $user->forceFill((array) $userData); // It will certain that the id and phone will be there
         $user->exists = true;
         $user->setConnection($shard);
 
@@ -155,7 +155,7 @@ class UserService
     }
 
     /**
-     * Redis Update Helper (নিশ্চিত করছি যেন এখানে প্রপার্টি এরর না হয়)
+     * Redis Update Helper
      */
     private function updateRedisIndexes($id, $email, $phone, $shard)
     {
