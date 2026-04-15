@@ -6,44 +6,48 @@ class ShardingConfig
 {
     public function getTopology(): array
     {
-        //shard (list) config under phase 
         return [
             1 => [
                 'phase_no' => 1,
                 'status'   => 'active',
                 'shards'   => [
                     1 => [
-                        'shard_key'  => 'shard_1',//unique
-                        'shard_name' => 'Asia South 1',
-                        'region'     => 'region_asia'
+                        'connection' => 'shard_1', // DB Connection Name
+                        'label'      => 'Asia-South-1',
+                        'region'     => 'region_asia',
+                        'is_active'  => true
                     ],
                     2 => [
-                        'shard_key'  => 'shard_2',//unique
-                        'shard_name' => 'Asia South 2',
-                        'region'     => 'region_asia'
+                        'connection' => 'shard_2',
+                        'label'      => 'Asia-South-2',
+                        'region'     => 'region_asia',
+                        'is_active'  => true
                     ]
                 ]
             ],
-            // Future phases will be added here
-            /* 2 => [
+            // Phase 2 (Upcoming - Commented out)
+            /*
+            2 => [
                 'phase_no' => 2,
                 'status'   => 'upcoming',
                 'shards'   => [
                     3 => [
-                        'shard_key'  => 'shard_3',//unique
-                        'shard_name' => 'Asia South 3',
-                        'region'     => 'region_asia'
+                        'connection' => 'shard_3',
+                        'label'      => 'Asia-South-3',
+                        'region'     => 'region_asia',
+                        'is_active'  => false
                     ],
                     4 => [
-                        'shard_key'  => 'shard_4',//unique
-                        'shard_name' => 'Asia South 4',
-                        'region'     => 'region_asia'
+                        'connection' => 'shard_4',
+                        'label'      => 'Asia-South-4',
+                        'region'     => 'region_asia',
+                        'is_active'  => false
                     ]
                 ]
-            ] */
+            ]
+            */
         ];
     }
-    
 
     public function getActivePhase(): array
     {
@@ -53,25 +57,27 @@ class ShardingConfig
     public function getTargetShardForNewRegistration(): array
     {
         $activePhase = $this->getActivePhase();
-        $shardId = array_rand($activePhase['shards']);
-        $shardDetails = $activePhase['shards'][$shardId];
+        // Filter only active shards
+        $activeShards = collect($activePhase['shards'])->where('is_active', true)->toArray();
+
+        $shardId = array_rand($activeShards);
+        $shardDetails = $activeShards[$shardId];
 
         return [
             'phase_id'   => $activePhase['phase_no'],
             'shard_id'   => $shardId,
-            'shard_key'  => $shardDetails['shard_key'],
-            'shard_name' => $shardDetails['shard_name'],
+            'shard_key'  => $shardDetails['connection'],
+            'shard_name' => $shardDetails['label'],
             'region'     => $shardDetails['region']
         ];
     }
 
-    // Here will be implemented ShardRoutingService
     public function getAllShards(): array
     {
         $allShards = [];
         foreach ($this->getTopology() as $phase) {
             foreach ($phase['shards'] as $shard) {
-                $allShards[] = $shard['shard_key'];
+                $allShards[] = $shard['connection'];
             }
         }
         return $allShards;

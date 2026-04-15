@@ -26,4 +26,22 @@ class PhoneFormatter
     {
         return preg_match('/^(01)[3-9][0-9]{8}$/', $phone);
     }
+    
 }
+
+
+/* class PhoneFormatter
+{
+    public static function normalize(string $phone): string
+    {
+        // সব নন-ডিজিট ক্যারেক্টার রিমুভ করা
+        $number = preg_replace('/[^0-9]/', '', $phone);
+
+        // যদি ১১ ডিজিট হয় (যেমন: 017...) তবে সামনে 88 যোগ করা
+        if (strlen($number) == 11) {
+            $number = '88' . $number;
+        }
+
+        return $number;
+    }
+} */
