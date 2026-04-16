@@ -1,46 +1,59 @@
-# OmniShard-1B: High-Performance Database Sharding Architecture
+# OmniShard-1B 🚀
+An enterprise-grade, horizontally sharded user management system designed to handle 1 Billion+ records with ultra-low latency.
 
-OmniShard-1B is a distributed database system designed to handle high-velocity data (up to 1 Billion records). It uses Laravel 12 and Docker to demonstrate advanced sharding, read-write splitting, and Redis-based search routing.
+## 🏗️ Architecture Overview
+The system uses **Horizontal Sharding** to split the user table across multiple database instances. A **Centralized Topology Manager** controls data routing, while a **Redis Bloom Filter** acts as a high-speed barricade to prevent duplicate registrations without hitting the database.
 
-## 🚀 Core Features
-- **Database Sharding:** Horizontal distribution of data across MySQL nodes.
-- **Read-Write Splitting:** Master handles writes, Replicas handle reads.
-- **Redis Bloom Filter:** Multi-key (Email & Phone) existence checking to save DB resources.
-- **Smart Routing:** Instant shard identification using Redis Hash Maps.
-- **Unique Global IDs:** Custom ID generation to avoid cross-shard primary key conflicts.
 
-## 🛠 Tech Stack
-- **Framework:** Laravel 12 (PHP 8.2)
-- **Database:** MySQL 8.0 (1 Metadata, 2 Masters, 2 Replicas)
-- **Cache/Filter:** Redis (Alpine)
-- **Infrastructure:** Docker & Docker Compose
 
-## 💻 Installation & Setup
+## ✨ Key Features
+- **Dynamic Sharding:** Supports multiple phases and regions (e.g., Asia, Europe).
+- **Bloom Filter Protection:** Uses Redis Bitmaps for O(1) existence checks.
+- **Failover Search:** Intelligent fallback to shard-scanning if metadata fails.
+- **Dockerized Environment:** Isolated shards, metadata DB, and Redis instances.
 
-### Step 1: Environment Setup
-Clone the repository and prepare your environment file:
+## 🛠️ Installation Guide (Local Setup)
+
+### 1. Clone the repository
+```bash
+git clone [https://github.com/yourusername/omnishard-1b.git](https://github.com/yourusername/omnishard-1b.git)
+cd omnishard-1b
+
+### 2. Copy the .env.example and configure your database connections for metadata, shard_1, and shard_2
 ```bash
 cp .env.example .env
-composer install
 
-## Step 2: Spin up Containers
-Launch the entire infrastructure using Docker Compose:
+### 3. Docker Infrastructure
+Fire up the distributed environment:
 ```bash
-docker compose up -d
+docker-compose up -d
 
-### Step 3: Database Preparation
-Run migrations on all nodes to establish the table structures:
+### 4. Database Migrations
+Run migrations for all shards using the custom sharding command:
 ```bash
-docker exec -it omnishard-app php artisan migrate --database=metadata
-docker exec -it omnishard-app php artisan migrate --database=shard_1
-docker exec -it omnishard-app php artisan migrate --database=shard_2
+php artisan migrate:shards
 
-### Step 4: Data Seeding
-Inject 1 Million records into the shards (This might take a few minutes):
+### 5. Performance Testing (Mass Ingestion)
+To simulate high load, use the optimized batch seeder:
 ```bash
-docker exec -it omnishard-app php artisan db:seed --class=MassiveUserSeeder
+php artisan db:seed --class=MassUserSeeder
 
-### Step 5: Sync Redis Layer
-Synchronize Email and Phone data with the Redis Bloom Filter and Mapping layer:
-```bash
-docker exec -it omnishard-app php artisan sync:bloom
+
+📂 Project Structure
+app/Services/ShardingConfig.php: The brain of the sharding topology.
+
+app/Services/BloomFilterService.php: Redis-based membership logic.
+
+app/Repositories/UserRepository.php: Data access layer for distributed nodes.
+
+app/Utils/PhoneFormatter.php: Centralized normalization for consistent hashing.
+
+🚀 API Endpoints
+POST /api/users: High-speed registration with Bloom Filter check.
+
+POST /api/login: Multi-shard authentication.
+
+PUT /api/users/{id}: Shard-aware profile updates.
+
+📄 License
+MIT License. Free for learning and scaling!
