@@ -2,169 +2,107 @@
 
 namespace App\Services;
 
-use App\Models\User;
-use App\Repositories\Interfaces\UserRepositoryInterface;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redis;
+use App\Repositories\UserRepository;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 
+/**
+ * Class UserService
+ * Orchestrates business logic for user management and sharding failover.
+ */
 class UserService
 {
     protected $userRepo;
     protected $shardingConfig;
+    protected $bloomFilter;
 
-    public function __construct(UserRepositoryInterface $userRepo, ShardingConfig $shardingConfig)
-    {
+    public function __construct(
+        UserRepository $userRepo,
+        ShardingConfig $shardingConfig,
+        BloomFilterService $bloomFilter
+    ) {
         $this->userRepo = $userRepo;
         $this->shardingConfig = $shardingConfig;
+        $this->bloomFilter = $bloomFilter;
     }
 
     /**
-     * Register User
+     * Register a new user with duplicate prevention and metadata failover.
      */
     public function registerUser(array $data): object
     {
+        $email = $data['email'];
+        $phone = $data['phone'];
+
+        // 1. Check Bloom Filter first (O(1) complexity)
+        if ($this->bloomFilter->exists('email', $email) || $this->bloomFilter->exists('phone', $phone)) {
+
+            // 2. Check Metadata DB
+            $exists = $this->userRepo->existsInMetadata($email, $phone);
+
+            // 3. Metadata Failover: If metadata returns false, verify manually across all shards
+            if (!$exists) {
+                $exists = $this->verifyInAllShards($email, $phone);
+            }
+
+            if ($exists) {
+                throw new \Exception("User already exists in the system.");
+            }
+        }
+
         $target = $this->shardingConfig->getTargetShardForNewRegistration();
         $userId = (int) (microtime(true) * 1000);
 
-        return DB::transaction(function () use ($userId, $data, $target) {
-            $userData = [
-                'id'         => $userId,
-                'name'       => $data['name'],
-                'email'      => $data['email'],
-                'phone'      => $data['phone'],
-                'password'   => Hash::make($data['password']),
-                'shard_key'  => $target['shard_key'],
-                'phase_id'   => $target['phase_id'], //added phase
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
+        // Prepare data
+        $userData = [
+            'id'         => $userId,
+            'name'       => $data['name'],
+            'email'      => $email,
+            'phone'      => $phone,
+            'password'   => Hash::make($data['password']),
+            'shard_key'  => $target['shard_key'],
+            'phase_id'   => $target['phase_id'],
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
 
-            $this->userRepo->createInShard($userData, $target['shard_key']);
+        // Process insertion
+        $this->userRepo->createInShard($userData, $target['shard_key']);
 
-            DB::connection('metadata')->table('global_users')->insert([
-                'id'         => $userId,
-                'email'      => $data['email'],
-                'phone'      => $data['phone'],
-                'shard_id'   => $target['shard_id'],
-                'shard_key'  => $target['shard_key'],
-                'phase_id'   => $target['phase_id'],
-                'created_at' => now(),
-            ]);
+        $this->userRepo->createInMetadata([
+            'id'         => $userId,
+            'email'      => $email,
+            'phone'      => $phone,
+            'shard_id'   => $target['shard_id'],
+            'shard_key'  => $target['shard_key'],
+            'phase_id'   => $target['phase_id'],
+            'created_at' => now(),
+        ]);
 
-            $this->updateRedisIndexes($userId, $data['email'], $data['phone'], $target['shard_key']);
+        // Post-registration sync
+        $this->bloomFilter->addToFilter($email, $phone);
 
-            return (object) $userData;
-        });
+        return (object) $userData;
     }
 
     /**
-     * Update User
+     * Failover Strategy: Iterates through all active shards to find a user.
+     * Used only when Metadata DB is unreachable or Bloom Filter gives a false positive.
      */
-    public function updateUser(int $id, array $data): bool
+    private function verifyInAllShards(string $email, string $phone): bool
     {
-        $metadata = DB::connection('metadata')->table('global_users')->where('id', $id)->first();
-        if (!$metadata) return false;
+        $allShards = $this->shardingConfig->getAllShards();
 
-        $shard = $metadata->shard_key;
+        foreach ($allShards as $shard) {
+            $userByEmail = $this->userRepo->findInShard($email, 'email', $shard);
+            $userByPhone = $this->userRepo->findInShard($phone, 'phone', $shard);
 
-        return DB::transaction(function () use ($id, $data, $shard, $metadata) {
-            $this->userRepo->updateInShard($id, $data, $shard);
-
-            if (isset($data['email']) || isset($data['phone'])) {
-                $updateData = array_intersect_key($data, array_flip(['email', 'phone']));
-
-                DB::connection('metadata')->table('global_users')
-                    ->where('id', $id)
-                    ->update($updateData);
-
-                //If the new email/phone is not there, then it will be fetched from the metadata
-                $currentEmail = $data['email'] ?? $metadata->email;
-                $currentPhone = $data['phone'] ?? $metadata->phone;
-
-                $this->updateRedisIndexes($id, $currentEmail, $currentPhone, $shard);
+            if ($userByEmail || $userByPhone) {
+                Log::warning("User found via Shard-Scan failover in: " . $shard);
+                return true;
             }
-
-            return true;
-        });
-    }
-
-    /**
-     * Find User
-     */
-    public function findUserByIdentifier(string $identifier): ?User
-    {
-        $type = filter_var($identifier, FILTER_VALIDATE_EMAIL) ? 'email' : 'phone';
-        $redis = Redis::connection();
-        $shard = $redis->get("map:{$type}:{$identifier}");
-
-        if (!$shard) {
-            $metadata = DB::connection('metadata')->table('global_users')->where($type, $identifier)->first();
-            if (!$metadata) return null;
-            $shard = $metadata->shard_key;
         }
 
-        $userData = $this->userRepo->findInShard($identifier, $type, $shard);
-        if (!$userData) return null;
-
-        //Those data will be converted into an array and then converted into a model
-        $user = new User();
-        $user->forceFill((array) $userData); // It will certain that the id and phone will be there
-        $user->exists = true;
-        $user->setConnection($shard);
-
-        return $user;
-    }
-
-    /**
-     * Authenticate
-     */
-    public function login(string $email, string $password)
-    {
-        $user = $this->findUserByIdentifier($email);
-
-        if (!$user || !Hash::check($password, $user->password)) {
-            throw ValidationException::withMessages(['email' => 'Invalid credentials.']);
-        }
-
-        return $user;
-    }
-
-    /**
-     * Delete
-     */
-    public function deleteUser(int $id): bool
-    {
-        $metadata = DB::connection('metadata')->table('global_users')->where('id', $id)->first();
-        if (!$metadata) return false;
-
-        $shard = $metadata->shard_key;
-
-        return DB::transaction(function () use ($id, $shard, $metadata) {
-            $this->userRepo->deleteInShard($id, $shard);
-            DB::connection('metadata')->table('global_users')->where('id', $id)->delete();
-
-            $redis = Redis::connection();
-            $redis->del("map:email:{$metadata->email}");
-            $redis->del("map:phone:{$metadata->phone}");
-            $redis->del("map:id:{$id}");
-
-            return true;
-        });
-    }
-
-    /**
-     * Redis Update Helper
-     */
-    private function updateRedisIndexes($id, $email, $phone, $shard)
-    {
-        $redis = Redis::connection();
-        $redis->executeRaw(['BF.ADD', 'user_bloom', $email]);
-        $redis->set("map:email:{$email}", $shard);
-        $redis->set("map:id:{$id}", $shard);
-        if ($phone) {
-            $redis->set("map:phone:{$phone}", $shard);
-        }
+        return false;
     }
 }

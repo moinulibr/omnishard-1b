@@ -15,13 +15,15 @@ class ShardingConfig
                         'connection' => 'shard_1', // DB Connection Name
                         'label'      => 'Asia-South-1',
                         'region'     => 'region_asia',
-                        'is_active'  => true
+                        'is_active'  => true,
+                        //'weight'     => 50 //for load blancing later.
                     ],
                     2 => [
                         'connection' => 'shard_2',
                         'label'      => 'Asia-South-2',
                         'region'     => 'region_asia',
-                        'is_active'  => true
+                        'is_active'  => true,
+                        //'weight'     => 50 //for load blancing later.
                     ]
                 ]
             ],
@@ -35,13 +37,15 @@ class ShardingConfig
                         'connection' => 'shard_3',
                         'label'      => 'Asia-South-3',
                         'region'     => 'region_asia',
-                        'is_active'  => false
+                        'is_active'  => false,
+                        //'weight'     => 50 //for load blancing later.
                     ],
                     4 => [
                         'connection' => 'shard_4',
                         'label'      => 'Asia-South-4',
                         'region'     => 'region_asia',
-                        'is_active'  => false
+                        'is_active'  => false,
+                        //'weight'     => 50 //for load blancing later.
                     ]
                 ]
             ]

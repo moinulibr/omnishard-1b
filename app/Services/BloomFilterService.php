@@ -4,39 +4,37 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Redis;
 
-/**
- * Class BloomFilterService
- * Optimized for O(1) membership checks with 1B+ capacity.
- */
 class BloomFilterService
 {
-    private array $phases = [
-        [
-            'id' => 1,
-            'bucket_size' => 1000000000, // 1 Billion
-            'key_prefix' => 'bf_v1'
-        ],
-        /* // Scaling for Phase 2 (Uncomment when users reach 1B+)
-        [
-            'id' => 2, 
-            'bucket_size' => 1000000000, // Another 1 Billion
-            'key_prefix' => 'bf_v2'
-        ], 
-        */
-    ];
+    protected $shardingConfig;
+
+    public function __construct(ShardingConfig $shardingConfig)
+    {
+        $this->shardingConfig = $shardingConfig;
+    }
 
     public function addToFilter(string $email, string $phone): void
     {
-        $activePhase = end($this->phases);
-        $this->setBit($activePhase, 'email', $email);
-        $this->setBit($activePhase, 'phone', $phone);
+        // Active Phase from ShardingConfig
+        $activePhase = $this->shardingConfig->getActivePhase();
+        $prefix = 'bf_phase_' . $activePhase['phase_no'];
+
+        // 1 Billion Bucket Size
+        $bucketSize = 1000000000;
+
+        $this->setBit($prefix . '_email', $email, $bucketSize);
+        $this->setBit($prefix . '_phone', $phone, $bucketSize);
     }
 
     public function exists(string $type, string $value): bool
     {
-        foreach ($this->phases as $phase) {
-            $pos = $this->getHash($value, $phase['bucket_size']);
-            $key = $phase['key_prefix'] . '_' . $type;
+        // Check All Phase (Phase 1, Phase 2...)
+        $topology = $this->shardingConfig->getTopology();
+        $bucketSize = 1000000000;
+
+        foreach ($topology as $phase) {
+            $key = 'bf_phase_' . $phase['phase_no'] . '_' . $type;
+            $pos = $this->getHash($value, $bucketSize);
 
             if (Redis::getbit($key, $pos) === 1) {
                 return true;
@@ -45,10 +43,9 @@ class BloomFilterService
         return false;
     }
 
-    private function setBit(array $phase, string $type, string $value): void
+    private function setBit(string $key, string $value, int $bucketSize): void
     {
-        $pos = $this->getHash($value, $phase['bucket_size']);
-        $key = $phase['key_prefix'] . '_' . $type;
+        $pos = $this->getHash($value, $bucketSize);
         Redis::setbit($key, $pos, 1);
     }
 

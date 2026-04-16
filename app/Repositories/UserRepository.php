@@ -2,22 +2,56 @@
 
 namespace App\Repositories;
 
-use App\Repositories\Interfaces\UserRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 
-class UserRepository implements UserRepositoryInterface
+/**
+ * Class UserRepository
+ * Handles all direct database interactions across shards and metadata.
+ */
+class UserRepository
 {
-    public function createInShard(array $data, string $shard): int
+    /**
+     * Check if a user exists in global metadata.
+     */
+    public function existsInMetadata(string $email, string $phone): bool
     {
-        return DB::connection($shard)->table('users')->insertGetId($data);
+        try {
+            return DB::connection('metadata')->table('global_users')
+                ->where('email', $email)
+                ->orWhere('phone', $phone)
+                ->exists();
+        } catch (\Exception $e) {
+            // If metadata fails, we return false to trigger failover search in Service
+            return false;
+        }
     }
 
-    public function findInShard(string $identifier, string $column, string $shard): ?object
+    /**
+     * Insert user into a specific shard.
+     */
+    public function createInShard(array $data, string $shardKey): void
     {
-        return DB::connection($shard)->table('users')
-            ->where($column, $identifier)
+        DB::connection($shardKey)->table('users')->insert($data);
+    }
+
+    /**
+     * Insert record into metadata database.
+     */
+    public function createInMetadata(array $data): void
+    {
+        DB::connection('metadata')->table('global_users')->insert($data);
+    }
+
+    /**
+     * Search for user in a specific shard.
+     */
+    public function findInShard(string $identifier, string $type, string $shardKey)
+    {
+        return DB::connection($shardKey)->table('users')
+            ->where($type, $identifier)
             ->first();
     }
+
 
     public function updateInShard(int $id, array $data, string $shard): bool
     {

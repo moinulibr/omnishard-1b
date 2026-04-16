@@ -36,4 +36,20 @@ class UserRepositoryOld implements UserRepositoryInterface
             ->table('users')
             ->insertGetId($data);
     }
+
+    /**
+     * @inheritDoc
+     */
+    public function updateInShard(int $id, array $data, string $shard): bool
+    {
+        return 1;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function deleteInShard(int $id, string $shard): bool
+    {
+        return 1;
+    }
 }
