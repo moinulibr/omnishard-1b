@@ -17,6 +17,7 @@ class UserRepository
     {
         try {
             return DB::connection('metadata')->table('global_users')
+                ->select('email,phone')
                 ->where('email', $email)
                 ->orWhere('phone', $phone)
                 ->exists();
@@ -43,10 +44,15 @@ class UserRepository
     }
 
     /**
-     * Search for user in a specific shard.
+     * Fetch user from a specific shard's replica.
+     * * @param string $identifier
+     * @param string $type
+     * @param string $shardKey
+     * @return object|null
      */
-    public function findInShard(string $identifier, string $type, string $shardKey)
+    public function findInShard(string $identifier, string $type, string $shardKey): ?object
     {
+        // Laravel automatically uses the replica for read operations
         return DB::connection($shardKey)->table('users')
             ->where($type, $identifier)
             ->first();
