@@ -13,7 +13,7 @@ interface UserRepositoryInterface
      */
     public function existsInMetadata(string $email, string $phone): bool;
 
-    /**
+    /**2
      * Fetch a user from a specific shard.
      */
     public function findInShard(string $identifier, string $type, string $shard): ?object;

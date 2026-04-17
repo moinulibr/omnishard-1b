@@ -15,7 +15,7 @@ Route::prefix('users')->group(function () {
     // Search User (GET)
     Route::get('/search', [UserController::class, 'search']);
     // Register/Store User (POST)
-    Route::post('/', [UserController::class, 'store']);
+    Route::post('store', [UserController::class, 'store']);
     //user update
     Route::put('/{id}', [UserController::class, 'update']);
     //delete user

@@ -11,6 +11,39 @@ use Illuminate\Support\Facades\DB;
 class UserRepository
 {
     /**
+     * Get metadata by ID
+     */
+    public function getMetadataById(int $id): ?object
+    {
+        return DB::connection('metadata')->table('global_users')->where('id', $id)->first();
+    }
+
+    /**
+     * Get metadata by identifier (email/phone)
+     */
+    public function getMetadataByIdentifier(string $type, string $identifier): ?object
+    {
+        return DB::connection('metadata')->table('global_users')->where($type, $identifier)->first();
+    }
+
+    /**
+     * Update Metadata
+     */
+    public function updateMetadata(int $id, array $data): bool
+    {
+        return DB::connection('metadata')->table('global_users')->where('id', $id)->update($data);
+    }
+
+    /**
+     * Delete Metadata
+     */
+    public function deleteMetadata(int $id): bool
+    {
+        return DB::connection('metadata')->table('global_users')->where('id', $id)->delete();
+    }
+
+
+    /**
      * Check if a user exists in global metadata.
      */
     public function existsInMetadata(string $email, string $phone): bool
@@ -41,6 +74,22 @@ class UserRepository
     public function createInMetadata(array $data): void
     {
         DB::connection('metadata')->table('global_users')->insert($data);
+    }
+
+
+    /**
+     * Get paginated users from a specific shard.
+     * * @param string $shard
+     * @param int $perPage
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     */
+    public function getPaginatedFromShard(string $shard, int $perPage)
+    {
+        // We use the shard name to dynamically switch the connection
+        return DB::connection($shard)
+            ->table('users')
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
     }
 
     /**

@@ -2,9 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\User;
 use App\Repositories\UserRepository;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Class UserService
@@ -84,6 +88,137 @@ class UserService
 
         return (object) $userData;
     }
+
+    /**
+     * Get users list with pagination. 
+     * Since data is sharded, we fetch from a specific shard or aggregate.
+     */
+    public function getUsersList(string $shardKey, int $perPage = 15)
+    {
+        return $this->userRepo->getPaginatedFromShard($shardKey, $perPage);
+    }
+
+    /**
+     * UserService.php
+     */
+
+    public function updateUser(int $id, array $data): bool
+    {
+        $metadata = $this->userRepo->getMetadataById($id);
+        if (!$metadata) return false;
+
+        $shard = $metadata->shard_key;
+
+        return DB::transaction(function () use ($id, $data, $shard, $metadata) {
+            $this->userRepo->updateInShard($id, $data, $shard);
+
+            if (isset($data['email']) || isset($data['phone'])) {
+                $updateData = array_intersect_key($data, array_flip(['email', 'phone']));
+                $this->userRepo->updateMetadata($id, $updateData);
+
+                $currentEmail = $data['email'] ?? $metadata->email;
+                $currentPhone = $data['phone'] ?? $metadata->phone;
+
+                $this->updateRedisIndexes($id, $currentEmail, $currentPhone, $shard);
+            }
+            return true;
+        });
+    }
+
+    public function findUserByIdentifier(string $identifier): ?User
+    {
+        $type = filter_var($identifier, FILTER_VALIDATE_EMAIL) ? 'email' : 'phone';
+        $redis = Redis::connection();
+        $shard = $redis->get("map:{$type}:{$identifier}");
+
+        if (!$shard) {
+            $metadata = $this->userRepo->getMetadataByIdentifier($type, $identifier);
+            if (!$metadata) return null;
+            $shard = $metadata->shard_key;
+        }
+
+        $userData = $this->userRepo->findInShard($identifier, $type, $shard);
+        if (!$userData) return null;
+
+        $user = new User();
+        $user->forceFill((array) $userData);
+        $user->exists = true;
+        $user->setConnection($shard);
+
+        return $user;
+    }
+
+    /**
+     * Authenticate
+     */
+    /**
+     * Authenticate user across distributed shards.
+     */
+    public function login(string $email, string $password)
+    {
+        $user = $this->findUserByIdentifier($email);
+
+        if (!$user || !Hash::check($password, $user->password)) {
+            throw ValidationException::withMessages(['email' => 'Invalid credentials.']);
+        }
+
+        return $user;
+    }
+
+
+    /**
+     * Logout logic: Clear Redis discovery maps for the user session if needed.
+     */
+    public function logout(int $userId): void
+    {
+        $metadata = $this->userRepo->getMetadataById($userId);
+        if ($metadata) {
+            $redis = Redis::connection();
+            $redis->del("map:id:{$userId}");
+        }
+    }
+
+    /**
+     * Delete user from both shard and metadata, and clear cache.
+     */
+    public function deleteUser(int $id): bool
+    {
+        $metadata = $this->userRepo->getMetadataById($id);
+        if (!$metadata) return false;
+
+        $shard = $metadata->shard_key;
+
+        return DB::transaction(function () use ($id, $shard, $metadata) {
+            $this->userRepo->deleteInShard($id, $shard);
+            $this->userRepo->deleteMetadata($id);
+
+            // Cleanup Redis Maps
+            $redis = Redis::connection();
+            $redis->del("map:email:{$metadata->email}");
+            $redis->del("map:phone:{$metadata->phone}");
+            $redis->del("map:id:{$id}");
+
+            return true;
+        });
+    }
+
+    /**
+     * Helper to keep Redis Discovery Maps updated.
+     */
+    private function updateRedisIndexes($id, $email, $phone, $shard)
+    {
+        $redis = Redis::connection();
+        // Add to Bloom Filter for membership check
+        $this->bloomFilter->addToFilter($email, $phone);
+
+        // Add to Redis Hash Map for fast routing (O(1) Discovery)
+        $redis->set("map:email:{$email}", $shard);
+        $redis->set("map:id:{$id}", $shard);
+        if ($phone) {
+            $redis->set("map:phone:{$phone}", $shard);
+        }
+    }
+
 
     /**
      * Failover Strategy: Iterates through all active shards to find a user.
