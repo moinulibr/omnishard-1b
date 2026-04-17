@@ -99,6 +99,35 @@ class UserService
     }
 
     /**
+     * Get global user list across all shards.
+     */
+    public function getGlobalUsers(int $perPage = 15)
+    {
+        $shards = $this->shardingConfig->getAllShards();
+        return $this->userRepo->getAllUsersPaginated($shards, $perPage);
+    }
+
+    /**
+     * Search user and return formatted data.
+     */
+    public function searchUser(string $identifier)
+    {
+        $type = filter_var($identifier, FILTER_VALIDATE_EMAIL) ? 'email' : 'phone';
+
+        // Try Redis first for O(1) discovery
+        $shard = Redis::get("map:{$type}:{$identifier}");
+
+        if (!$shard) {
+            $metadata = $this->userRepo->getMetadataByIdentifier($type, $identifier);
+            if (!$metadata) return null;
+            $shard = $metadata->shard_key;
+        }
+
+        return $this->userRepo->findInShard($identifier, $type, $shard);
+    }
+
+    
+    /**
      * UserService.php
      */
 
@@ -173,6 +202,9 @@ class UserService
     {
         $metadata = $this->userRepo->getMetadataById($userId);
         if ($metadata) {
+            // If using Sanctum
+            $metadata->currentAccessToken()->delete();
+
             $redis = Redis::connection();
             $redis->del("map:id:{$userId}");
         }

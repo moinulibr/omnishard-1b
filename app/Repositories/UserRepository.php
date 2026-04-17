@@ -91,6 +91,30 @@ class UserRepository
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
     }
+    /**
+     * Fetch users from all shards and paginate (Global Pagination)
+     * Note: For 1B records, this is usually done via a Search Engine (Elasticsearch).
+     * Here we implement a database union approach for your current shards.
+     */
+    public function getAllUsersPaginated(array $allShards, int $perPage)
+    {
+        $queries = null;
+
+        foreach ($allShards as $shard) {
+            $currentQuery = DB::connection($shard)
+                ->table('users')
+                ->select('id', 'name', 'email', 'phone', 'created_at', DB::raw("'$shard' as shard_key"));
+
+            if ($queries === null) {
+                $queries = $currentQuery;
+            } else {
+                $queries->unionAll($currentQuery);
+            }
+        }
+
+        return $queries->orderBy('created_at', 'desc')->paginate($perPage);
+    }
+
 
     /**
      * Fetch user from a specific shard's replica.

@@ -21,6 +21,39 @@ class UserController extends Controller
         $this->userService = $userService;
     }
 
+    /**
+     * Global List of Users.
+     */
+    public function index(Request $request)
+    {
+        $users = $this->userService->getGlobalUsers($request->get('per_page', 15));
+        return UserResource::collection($users);
+    }
+
+    /**
+     * Search User - Protected Route.
+     */
+    public function protecedSearch(Request $request)
+    {
+        $request->validate(['identifier' => 'required']);
+        $user = $this->userService->searchUser($request->identifier);
+
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        return new UserResource($user);
+    }
+
+
+    public function search(Request $request): JsonResponse
+    {
+        $user = $this->userService->findUserByIdentifier($request->q);
+        return $user
+            ? $this->successResponse(new UserResource($user), 'User found')
+            : $this->errorResponse('User not found', 404);
+    }
+
     public function store(UserStoreRequest $request): JsonResponse
     {
         try {
@@ -49,13 +82,7 @@ class UserController extends Controller
         }
     }
 
-    public function search(Request $request): JsonResponse
-    {
-        $user = $this->userService->findUserByIdentifier($request->q);
-        return $user
-            ? $this->successResponse(new UserResource($user), 'User found')
-            : $this->errorResponse('User not found', 404);
-    }
+    
 
     public function update(Request $request, int $id): JsonResponse
     {
@@ -73,9 +100,12 @@ class UserController extends Controller
             : $this->errorResponse('Delete failed', 400);
     }
 
-    public function logout(Request $request): JsonResponse
+    /**
+     * Logout User.
+     */
+    public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
-        return $this->successResponse(null, 'Logged out successfully');
+        $this->userService->logoutUser($request->user());
+        return response()->json(['message' => 'Logged out successfully']);
     }
 }
