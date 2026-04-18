@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
+//redis related - mantenance
 class MaintenanceController extends Controller
 {
     /**
+     * Database real time user count sync to redis
      * ডাটাবেস থেকে রিয়েল কাউন্ট নিয়ে রেডিস আপডেট করা।
      */
     public function syncTotalCount()
