@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -10,14 +12,13 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 // Public Routes
-//Route::post('/register', [AuthController::class, 'register']);
-//Route::post('/login', [AuthController::class, 'login']);
-Route::post('/login', [UserController::class, 'login']);
+Route::post('/registration', [RegisterController::class, 'register']);
+Route::post('/login', [LoginController::class, 'login']);
 
 
 Route::prefix('users')->middleware('auth:sanctum')->group(function () {
     // User list (GET)
-    Route::get('/users', [UserController::class, 'index']); // Paginated List
+    Route::get('/', [UserController::class, 'index']); // Paginated List
     // User list (GET)
     Route::get('/users/search', [UserController::class, 'search']); // Search Resource
     // Search User (GET)
@@ -28,7 +29,7 @@ Route::prefix('users')->middleware('auth:sanctum')->group(function () {
     Route::put('/{id}', [UserController::class, 'update']);
     //delete user
     Route::delete('/{id}', [UserController::class, 'destroy']);
-
+    // Logout - Specific Post Route
     Route::post('/logout', [UserController::class, 'logout']);
 });
 

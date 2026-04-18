@@ -64,24 +64,6 @@ class UserController extends Controller
         }
     }
 
-    public function login(Request $request): JsonResponse
-    {
-        $request->validate(['email' => 'required|email', 'password' => 'required']);
-
-        try {
-            $user = $this->userService->login($request->email, $request->password);
-            $token = $user->createToken('auth_token')->plainTextToken;
-
-            return $this->successResponse([
-                'user' => new UserResource($user),
-                'access_token' => $token,
-                'token_type' => 'Bearer'
-            ], 'Login successful');
-        } catch (\Exception $e) {
-            return $this->errorResponse('Login failed - ', 401, $e->getMessage());
-        }
-    }
-
     
 
     public function update(Request $request, int $id): JsonResponse
@@ -105,7 +87,7 @@ class UserController extends Controller
      */
     public function logout(Request $request)
     {
-        $this->userService->logoutUser($request->user());
+        $this->userService->logoutUser($request);
         return response()->json(['message' => 'Logged out successfully']);
     }
 }

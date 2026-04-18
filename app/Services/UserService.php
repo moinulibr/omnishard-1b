@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Repositories\UserRepository;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -86,6 +87,8 @@ class UserService
         // Post-registration sync
         $this->bloomFilter->addToFilter($email, $phone);
 
+        Redis::incr('total_users_count');
+        
         return (object) $userData;
     }
 
@@ -191,6 +194,27 @@ class UserService
             throw ValidationException::withMessages(['email' => 'Invalid credentials.']);
         }
 
+        // Generate token on the user's specific shard connection
+        // Crucial: Set the connection to the user's shard before creating token
+        // 1. Ensure the connection is set to the user's shard
+        $user->setConnection($user->shard_key);
+
+        // 2. Create the token
+        $tokenResult = $user->createToken('auth_token');
+        $plainToken = $tokenResult->plainTextToken;
+
+        // 3. Extract the real token (remove the ID part before hashing)
+        // If token is "14|abc123token", we need "abc123token"
+        $tokenValue = str_contains($plainToken, '|') ? explode('|', $plainToken)[1] : $plainToken;
+        $hashedToken = hash('sha256', $tokenValue);
+
+        // 4. Store in Redis mapping (Valid for 24 hours)
+        \Illuminate\Support\Facades\Redis::setex("token_shard:{$hashedToken}", 86400, $user->shard_key);
+
+        return [
+            'token' => $plainToken,
+            'user'  => $user
+        ];
         return $user;
     }
 
@@ -198,16 +222,26 @@ class UserService
     /**
      * Logout logic: Clear Redis discovery maps for the user session if needed.
      */
-    public function logout(int $userId): void
+    public function logoutUser(Request $request): bool
     {
-        $metadata = $this->userRepo->getMetadataById($userId);
-        if ($metadata) {
-            // If using Sanctum
-            $metadata->currentAccessToken()->delete();
+        $user = $request->user();
+        if (!$user) return false;
 
-            $redis = Redis::connection();
-            $redis->del("map:id:{$userId}");
+        // 1. Get the current token from the authenticated user
+        $currentToken = $user->currentAccessToken();
+
+        if ($currentToken) {
+            // 2. Identify the token string to clear from Redis
+            // Sanctum stores the hashed token in the 'token' column
+            $hashedToken = $currentToken->token;
+
+            // 3. Clear the Redis Shard Map immediately
+            \Illuminate\Support\Facades\Redis::del("token_shard:{$hashedToken}");
+
+            // 4. Delete the token from the Shard's personal_access_tokens table
+            return $currentToken->delete();
         }
+        return false;
     }
 
     /**

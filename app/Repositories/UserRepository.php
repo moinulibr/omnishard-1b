@@ -91,6 +91,7 @@ class UserRepository
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
     }
+    
     /**
      * Fetch users from all shards and paginate (Global Pagination)
      * Note: For 1B records, this is usually done via a Search Engine (Elasticsearch).
@@ -98,21 +99,40 @@ class UserRepository
      */
     public function getAllUsersPaginated(array $allShards, int $perPage)
     {
-        $queries = null;
+        $allResults = collect();
+        $currentPage = \Illuminate\Pagination\Paginator::resolveCurrentPage() ?: 1;
+        $offset = ($currentPage - 1) * $perPage;
 
+        // ১. প্রতিটি শার্ড থেকে আলাদা করে ডাটা নিয়ে আসা (O(n) where n = number of shards)
         foreach ($allShards as $shard) {
-            $currentQuery = DB::connection($shard)
+            $shardResults = DB::connection($shard)
                 ->table('users')
-                ->select('id', 'name', 'email', 'phone', 'created_at', DB::raw("'$shard' as shard_key"));
+                ->select('id', 'name', 'email', 'phone', 'created_at')
+                ->orderBy('created_at', 'desc')
+                ->offset($offset) // গুরুত্বপূর্ণ: ডাটাবেস লেভেলেই অফসেট করা
+                ->limit($perPage)
+                ->get()
+                ->map(function ($user) use ($shard) {
+                    $user->shard_key = $shard; // শার্ড আইডেন্টিফাই করা
+                    return $user;
+                });
 
-            if ($queries === null) {
-                $queries = $currentQuery;
-            } else {
-                $queries->unionAll($currentQuery);
-            }
+            $allResults = $allResults->concat($shardResults);
         }
 
-        return $queries->orderBy('created_at', 'desc')->paginate($perPage);
+        // ২. সব শার্ডের রেজাল্টকে একসাথে করে আবার সর্ট করা (পিএইচপি মেমোরিতে শুধু ৩০-৪০টি ডাটা থাকবে)
+        $finalResults = $allResults->sortByDesc('created_at')->take($perPage)->values();
+
+        // ৩. রেডিস থেকে টোটাল কাউন্ট নেওয়া (DBMS-এর ওপর চাপ কমাতে)
+        $totalUsers = (int) \Illuminate\Support\Facades\Redis::get('total_users_count') ?: 0;
+
+        return new \Illuminate\Pagination\LengthAwarePaginator(
+            $finalResults,
+            $totalUsers,
+            $perPage,
+            $currentPage,
+            ['path' => \Illuminate\Pagination\Paginator::resolveCurrentPath()]
+        );
     }
 
 
