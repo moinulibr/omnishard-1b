@@ -1,20 +1,20 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    // We use Statement because Laravel doesn't support PARTITION BY in Schema Builder
     public function up(): void
     {
-        // Using Raw SQL because Laravel Schema Builder doesn't support complex Partitioning
-        DB::connection('metadata')->statement("
+        //docker exec -it omnishard-app php artisan migrate --database=metadata --path=database/migrations/metadata
+        // $this->getConnection() In the command line --database Connection understand from this flag
+        $connection = $this->getConnection() ?: 'metadata';
+
+        DB::connection($connection)->statement("DROP TABLE IF EXISTS global_users");
+
+        DB::connection($connection)->statement("
             CREATE TABLE global_users (
                 id BIGINT UNSIGNED NOT NULL,
                 email VARCHAR(100) NOT NULL,
@@ -29,13 +29,12 @@ return new class extends Migration
             PARTITIONS 26;
         ");
 
-        // High-performance Indexes for Lookups
-        DB::connection('metadata')->statement("CREATE INDEX idx_email_lookup ON global_users(email)");
-        DB::connection('metadata')->statement("CREATE INDEX idx_phone_lookup ON global_users(phone)");
+        DB::connection($connection)->statement("CREATE INDEX idx_email_lookup ON global_users(email)");
+        DB::connection($connection)->statement("CREATE INDEX idx_phone_lookup ON global_users(phone)");
     }
 
     public function down(): void
     {
-        Schema::connection('metadata')->dropIfExists('global_users');
+        Schema::connection($this->getConnection() ?: 'metadata')->dropIfExists('global_users');
     }
 };

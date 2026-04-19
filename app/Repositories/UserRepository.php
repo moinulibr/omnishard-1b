@@ -148,4 +148,28 @@ class UserRepository
             ->where('id', $id)
             ->delete();
     }
+
+
+
+    /**
+     * Bulk insert users into a specific shard.
+     * @param string $shard
+     * @param array $data
+     * @return bool
+     */
+    public function bulkInsertToShard(string $shard, array $data): bool
+    {
+        // Using DB::connection($shard) ensures we are on the right database
+        return DB::connection($shard)->table('users')->insert($data);
+    }
+
+    /**
+     * Bulk insert metadata mapping into metadata database.
+     * @param array $data
+     * @return bool
+     */
+    public function insertMetadata(array $data): bool
+    {
+        return DB::connection('metadata')->table('global_users')->insert($data);
+    }
 }
