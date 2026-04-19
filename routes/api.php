@@ -24,6 +24,8 @@ Route::prefix('users')->middleware('auth:sanctum')->group(function () {
     Route::get('/users/search', [UserController::class, 'search']); // Search Resource
     // Search User (GET)
     Route::get('/search', [UserController::class, 'search']);
+    // get single User (GET)
+    Route::get('/show/{id}', [UserController::class, 'show']);
     // Register/Store User (POST)
     Route::post('store', [UserController::class, 'store']);
     //user update

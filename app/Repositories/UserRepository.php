@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Traits\ShardedPaginator;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\DB;
  */
 class UserRepository
 {
+    use ShardedPaginator;
     /**
      * Get metadata by ID
      */
@@ -99,40 +101,7 @@ class UserRepository
      */
     public function getAllUsersPaginated(array $allShards, int $perPage)
     {
-        $allResults = collect();
-        $currentPage = \Illuminate\Pagination\Paginator::resolveCurrentPage() ?: 1;
-        $offset = ($currentPage - 1) * $perPage;
-
-        // ১. প্রতিটি শার্ড থেকে আলাদা করে ডাটা নিয়ে আসা (O(n) where n = number of shards)
-        foreach ($allShards as $shard) {
-            $shardResults = DB::connection($shard)
-                ->table('users')
-                ->select('id', 'name', 'email', 'phone', 'created_at', 'phase_id')
-                ->orderBy('created_at', 'desc')
-                ->offset($offset) // গুরুত্বপূর্ণ: ডাটাবেস লেভেলেই অফসেট করা
-                ->limit($perPage)
-                ->get()
-                ->map(function ($user) use ($shard) {
-                    $user->shard_key = $shard; // শার্ড আইডেন্টিফাই করা
-                    return $user;
-                });
-
-            $allResults = $allResults->concat($shardResults);
-        }
-
-        // ২. সব শার্ডের রেজাল্টকে একসাথে করে আবার সর্ট করা (পিএইচপি মেমোরিতে শুধু ৩০-৪০টি ডাটা থাকবে)
-        $finalResults = $allResults->sortByDesc('created_at')->take($perPage)->values();
-
-        // ৩. রেডিস থেকে টোটাল কাউন্ট নেওয়া (DBMS-এর ওপর চাপ কমাতে)
-        $totalUsers = (int) \Illuminate\Support\Facades\Redis::get('total_users_count') ?: 0;
-
-        return new \Illuminate\Pagination\LengthAwarePaginator(
-            $finalResults,
-            $totalUsers,
-            $perPage,
-            $currentPage,
-            ['path' => \Illuminate\Pagination\Paginator::resolveCurrentPath()]
-        );
+        return $this->getGlobalPaginatedData($allShards, 'users', $perPage, 'total_users_count');
     }
 
 
@@ -148,6 +117,20 @@ class UserRepository
         // Laravel automatically uses the replica for read operations
         return DB::connection($shardKey)->table('users')
             ->where($type, $identifier)
+            ->first();
+    }
+
+    /**
+     * Fetch user from a specific shard's replica.
+     * * @param string $id
+     * @param string $shardKey
+     * @return object|null
+     */
+    public function findInShardById(string $id, string $shardKey): ?object
+    {
+        // Laravel automatically uses the replica for read operations
+        return DB::connection($shardKey)->table('users')
+            ->where('id', $id)
             ->first();
     }
 

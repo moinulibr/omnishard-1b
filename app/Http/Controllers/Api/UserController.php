@@ -54,6 +54,14 @@ class UserController extends Controller
             : $this->errorResponse('User not found', 404);
     }
 
+    public function show($id): JsonResponse
+    {
+        $user = $this->userService->findUserById($id);
+        return $user
+            ? $this->successResponse(new UserResource($user), 'User found')
+            : $this->errorResponse('User not found', 404);
+    }
+
     public function store(UserStoreRequest $request): JsonResponse
     {
         try {

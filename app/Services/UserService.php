@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Validation\ValidationException;
+use App\Services\RedisCounterService;
+use Exception;
 
 /**
  * Class UserService
@@ -20,15 +22,18 @@ class UserService
     protected $userRepo;
     protected $shardingConfig;
     protected $bloomFilter;
+    protected $redisServiceCounter;
 
     public function __construct(
         UserRepository $userRepo,
         ShardingConfig $shardingConfig,
-        BloomFilterService $bloomFilter
-    ) {
+        BloomFilterService $bloomFilter,
+        RedisCounterService $redisServiceCounter
+        ) {
         $this->userRepo = $userRepo;
         $this->shardingConfig = $shardingConfig;
         $this->bloomFilter = $bloomFilter;
+        $this->redisServiceCounter = $redisServiceCounter;
     }
 
     /**
@@ -180,6 +185,22 @@ class UserService
         return $user;
     }
 
+    public function findUserById(string $id): ?User
+    {
+        $shard = $this->userRepo->getMetadataById($id);
+        if(!$shard) return null;
+        
+        $userData = $this->userRepo->findInShardById($id, $shard->shard_key);
+        if (!$userData) return null;
+
+        $user = new User();
+        $user->forceFill((array) $userData);
+        $user->exists = true;
+        $user->setConnection($shard->shard_key);
+
+        return $user;
+    }
+
     /**
      * Authenticate
      */
@@ -264,6 +285,8 @@ class UserService
             $redis->del("map:phone:{$metadata->phone}");
             $redis->del("map:id:{$id}");
 
+            $this->redisServiceCounter->decrement('down');
+            
             return true;
         });
     }
