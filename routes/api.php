@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\MaintenanceController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
@@ -33,3 +34,16 @@ Route::prefix('users')->middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [UserController::class, 'logout']);
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| Maintenance Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('maintenance')->group(function () {
+    Route::get('/sync', [MaintenanceController::class, 'syncCount']);
+    Route::get('/adjust', [MaintenanceController::class, 'adjust']);
+    Route::get('/add-bulk', [MaintenanceController::class, 'addBulk']);
+    Route::get('/reset', [MaintenanceController::class, 'reset']);
+    Route::get('/status', [MaintenanceController::class, 'getStatus']);
+});

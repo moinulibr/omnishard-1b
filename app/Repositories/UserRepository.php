@@ -107,7 +107,7 @@ class UserRepository
         foreach ($allShards as $shard) {
             $shardResults = DB::connection($shard)
                 ->table('users')
-                ->select('id', 'name', 'email', 'phone', 'created_at', 'phase')
+                ->select('id', 'name', 'email', 'phone', 'created_at', 'phase_id')
                 ->orderBy('created_at', 'desc')
                 ->offset($offset) // গুরুত্বপূর্ণ: ডাটাবেস লেভেলেই অফসেট করা
                 ->limit($perPage)
