@@ -25,7 +25,7 @@ class MassUserSeeder extends Seeder
         $this->userRepo = $userRepo;
     }
 
-    public function run($totalRecords = 50000)
+    public function run($totalRecords = 20000)
     {
         // Pre-fetch active phase and shards outside the loop for performance
         $activePhase = $this->shardConfig->getActivePhase();

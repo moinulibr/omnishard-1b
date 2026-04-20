@@ -1,6 +1,7 @@
 <?php
     namespace App\Console\Commands;
 
+    use App\Services\ShardingConfig;
     use Illuminate\Console\Command;
     use Illuminate\Support\Facades\DB;
     use Illuminate\Support\Facades\Redis;
@@ -13,7 +14,7 @@
     {
         
         /** @var string */
-        protected $signature = 'sync:bloom';
+        protected $signature = 'user-sync:bloom-filter';
 
         /** @var string */
         protected $description = 'Sync all shard users (Email & Phone) to Redis Bloom Filter and Hash Maps';
@@ -37,31 +38,37 @@
      */
     public function handle(): void
     {
-        $shards = ['shard_1', 'shard_2'];
+        // Fetch shards dynamically from ShardingConfig
+        $shards = app(ShardingConfig::class)->getAllShards();
+
         $this->info("Initiating Multi-Key Sync Process (Email & Phone)...");
 
         foreach ($shards as $shard) {
-            $count = DB::connection($shard)->table('users')->count();
-            $this->info("\nFound {$count} users in {$shard}. Starting sync...");
+            $this->info("\nProcessing Shard: {$shard}");
 
-            DB::connection($shard)->table('users')->orderBy('id')->chunk(2000, function ($users) use ($shard) {
-                // We are calling the raw Redis connection to bypass Laravel's abstraction limits
-                Redis::pipeline(function ($pipe) use ($users, $shard) {
-                    foreach ($users as $users_chunk) {
-                        // Native PhpRedis call format inside pipeline
-                        // 'bf_add' will be automatically converted to 'BF.ADD' by the driver
-                        $pipe->rawCommand('BF.ADD', 'user_bloom', $users_chunk->email);
-                        $pipe->set("map:email:{$users_chunk->email}", $shard);
+            // Using cursor() instead of chunk() for lower memory footprint in large data
+            DB::connection($shard)->table('users')
+                ->select('id', 'email', 'phone') // Only fetch needed fields
+                ->orderBy('id')
+                ->chunkById(2000, function ($users) use ($shard) {
+                    Redis::pipeline(function ($pipe) use ($users, $shard) {
+                        foreach ($users as $user) {
+                            // 1. Add to Bloom Filter (Atomic)
+                            $pipe->rawCommand('BF.ADD', 'user_bloom', $user->email);
 
-                        if ($users_chunk->phone) {
-                            $pipe->rawCommand('BF.ADD', 'user_bloom', $users_chunk->phone);
-                            $pipe->set("map:phone:{$users_chunk->phone}", $shard);
+                            // 2. Set Mapping with optimized TTL if needed
+                            $pipe->set("map:email:{$user->email}", $shard);
+
+                            if ($user->phone) {
+                                $pipe->rawCommand('BF.ADD', 'user_bloom', $user->phone);
+                                $pipe->set("map:phone:{$user->phone}", $shard);
+                            }
                         }
-                    }
+                    });
+                    $this->output->write('.');
                 });
-                $this->output->write('.');
-            });
-            $this->info("\nFinished {$shard}");
+
+            $this->info("\nFinished Shard: {$shard}");
         }
 
         $this->info("\nMulti-Key Sync Completed Successfully!");
