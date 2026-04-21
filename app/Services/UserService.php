@@ -109,10 +109,16 @@ class UserService
     /**
      * Get global user list across all shards.
      */
-    public function getGlobalUsers(int $perPage = 15)
+    public function getGlobalUsersData(int $perPage = 15)
     {
+        // 1. Get dynamic shards from Config
+        //$shards = app(\App\Services\ShardingConfig::class)->getAllShards();
         $shards = $this->shardingConfig->getAllShards();
-        return $this->userRepo->getAllUsersPaginated($shards, $perPage);
+        $table = "users"; 
+        $select = ['*'];
+        $orderBy = "ASC";
+        $totalCount = 'total_users_count';
+        return $this->userRepo->getAllUsersPaginated($shards, $table, $perPage, $orderBy, $totalCount, $select);
     }
 
     /**

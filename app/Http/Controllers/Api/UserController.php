@@ -26,6 +26,15 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
+        //return $lastId = (int) request()->input('per_page', 15);
+        //return $lastId = (int) request()->input('last_id', 0);
+        // One line call - Dynamic and Scalable
+        $users = $this->userService->getGlobalUsersData(
+            request()->input('per_page', 15)
+        );
+
+        return response()->json($users);
+        
         $users = $this->userService->getGlobalUsers($request->get('per_page', 15));
         return UserResource::collection($users);
     }

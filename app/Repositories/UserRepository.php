@@ -99,9 +99,9 @@ class UserRepository
      * Note: For 1B records, this is usually done via a Search Engine (Elasticsearch).
      * Here we implement a database union approach for your current shards.
      */
-    public function getAllUsersPaginated(array $allShards, int $perPage)
+    public function getAllUsersPaginated(array $allShards, string $table, int $perPage, $orderBy, $totalCount, array $select)
     {
-        return $this->getGlobalPaginatedData($allShards, 'users', $perPage, 'total_users_count');
+        return $this->getGlobalPaginatedData($allShards, $table, $perPage, $orderBy, $totalCount, $select);
     }
 
 
