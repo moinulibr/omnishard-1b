@@ -7,6 +7,7 @@ use App\Http\Requests\UserStoreRequest;
 use App\Http\Resources\UserResource;
 use App\Services\UserService;
 use App\Traits\ApiResponse;
+use App\Utils\IdGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -26,6 +27,7 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
+        //return IdGenerator::generate('users');
         //return $lastId = (int) request()->input('per_page', 15);
         //return $lastId = (int) request()->input('last_id', 0);
         // One line call - Dynamic and Scalable

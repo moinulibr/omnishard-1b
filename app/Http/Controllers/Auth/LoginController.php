@@ -9,6 +9,7 @@ use App\Rules\BdPhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use App\Traits\ApiResponse;
+use App\Utils\IdGenerator;
 use Illuminate\Http\JsonResponse;
 
 class LoginController extends Controller
@@ -22,8 +23,9 @@ class LoginController extends Controller
         $this->userService = $userService;
     }
 
-    public function login(Request $request): JsonResponse
+    public function login(Request $request)
     {
+        //return IdGenerator::generate('user');
         $request->validate(['email' => 'required|email', 'password' => 'required']);
 
         try {

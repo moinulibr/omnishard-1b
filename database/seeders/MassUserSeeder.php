@@ -6,6 +6,7 @@ use Illuminate\Database\Seeder;
 use App\Services\RedisCounterService;
 use App\Repositories\UserRepository;
 use App\Services\ShardingConfig;
+use App\Utils\IdGenerator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -25,7 +26,7 @@ class MassUserSeeder extends Seeder
         $this->userRepo = $userRepo;
     }
 
-    public function run($totalRecords = 20000)
+    public function run($totalRecords = 40000)
     {
         // Pre-fetch active phase and shards outside the loop for performance
         $activePhase = $this->shardConfig->getActivePhase();
@@ -48,7 +49,8 @@ class MassUserSeeder extends Seeder
 
             for ($i = 0; $i < $currentBatchSize; $i++) {
                 // Collision-proof ID Generation
-                $userId = (int) (now()->getTimestampMs() . $i . rand(10, 99));
+                //$userId = (int) (now()->getTimestampMs() . $i . rand(10, 99));
+                $userId = IdGenerator::generate('user');;
 
                 // Dynamic Shard Selection from Active Shards
                 $shardId = array_rand($activeShards);

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Validation\ValidationException;
 use App\Services\RedisCounterService;
+use App\Utils\IdGenerator;
 use Exception;
 
 /**
@@ -61,7 +62,8 @@ class UserService
         }
 
         $target = $this->shardingConfig->getTargetShardForNewRegistration();
-        $userId = (int) (microtime(true) * 1000);
+        //$userId = (int) (microtime(true) * 1000);
+        $userId = IdGenerator::generate('user');
 
         // Prepare data
         $userData = [

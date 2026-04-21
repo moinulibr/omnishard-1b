@@ -7,10 +7,78 @@ use Illuminate\Support\Facades\Redis;
 
 trait ShardedPaginator
 {
+
+    public function getGlobalPaginatedData(array $shards, string $table, int $perPage = 20, $orderBy, $totalCount, array $select = ['*'])
+    {
+        $lastId = request()->input('last_id', 0);
+
+        // ১. সরাসরি Metadata DB থেকে ২০টি আইডি এবং তাদের শার্ড লোকেশন নিন
+        // এটি আপনার রেজাল্টকে একদম নিখুঁত ২০টিই রাখবে।
+        $metadataRecords = DB::connection('metadata')
+            ->table('global_users')
+            ->select('id', 'shard_id')
+            ->where('id', '>', $lastId)
+            ->orderBy('id', $orderBy)
+            ->limit($perPage)
+            ->get();
+
+        if ($metadataRecords->isEmpty()) {
+            return $this->formatResponse(collect(), null, $perPage, $table);
+        }
+
+        // ২. আইডিগুলোকে তাদের শার্ড অনুযায়ী গ্রুপ করুন যাতে ডাটাবেসে কুয়েরি কম লাগে
+        $shardGroups = $metadataRecords->groupBy('shard_id');
+        $finalResults = collect();
+
+        foreach ($shardGroups as $shardId => $records) {
+            $ids = $records->pluck('id')->toArray();
+            $connection = "shard_{$shardId}"; // আপনার শার্ড কানেকশন নাম
+
+            $shardData = DB::connection($connection)
+                ->table($table)
+                ->select($select)
+                ->whereIn('id', $ids)
+                ->get()
+                ->keyBy('id'); // আইডি দিয়ে কি সেট করুন যাতে পরে সর্ট করা সহজ হয়
+
+            foreach ($ids as $id) {
+                if (isset($shardData[$id])) {
+                    $item = $shardData[$id];
+                    $item->shard_key = $connection;
+                    $finalResults->push($item);
+                }
+            }
+        }
+
+        // ৩. গ্লোবাল আইডি অনুযায়ী আবার সর্ট করুন (সব শার্ডের ডাটা একসাথে মেলাতে)
+        $finalResults = $finalResults->sortBy('id')->values();
+        $nextId = $finalResults->last()->id ?? null;
+
+        return $this->formatResponse($finalResults, $nextId, $perPage, $table);
+    }
+
+    private function formatResponse($data, $nextId, $perPage, $table)
+    {
+        $totalCount = (int) Redis::get("total_{$table}_count") ?: 0;
+
+        return [
+            'data' => $data,
+            'meta' => [
+                'next_id' => $nextId,
+                'per_page' => $perPage,
+                'total' => $totalCount,
+                'has_more' => $data->count() === $perPage
+            ],
+            'links' => [
+                'next_url' => $nextId ? request()->fullUrlWithQuery(['last_id' => $nextId]) : null
+            ]
+        ];
+    }
+
     /**
      * Optimized Sharded Pagination using ID-based Filtering (Cursor)
      */
-    public function getGlobalPaginatedData(array $shards, string $table, int $perPage = 15, $orderBy, $totalCount, array $select = ['*'])
+    /* public function getGlobalPaginatedData(array $shards, string $table, int $perPage = 15, $orderBy, $totalCount, array $select = ['*'])
     {
         // 2. Get the cursor (last_id) from the request
         $lastId = request()->input('last_id', 0);
@@ -57,5 +125,5 @@ trait ShardedPaginator
                 'next_page_url' => $nextCursor ? request()->fullUrlWithQuery(['last_id' => $nextCursor]) : null,
             ]
         ];
-    }
+    } */
 }
