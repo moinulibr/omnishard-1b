@@ -28,8 +28,14 @@ class IdGenerator
 
         // 4. final id  (10 + 2 + 4 = 16 digit)
         return "{$timestamp}{$shardId}{$sequence}";
+    }
+}
 
-        /* // 1. timestamp (13 digit) - present time milisecond. time mili
+
+
+
+
+/* // 1. timestamp (13 digit) - present time milisecond. time mili
         $timestamp = (int) (microtime(true) * 1000);
 
         // 2. dynamic shard id (from ShardingConfig)
@@ -50,5 +56,3 @@ class IdGenerator
 
         // 4. final id generation
         return "{$timestamp}{$shardId}{$sequenceId}"; */
-    }
-}

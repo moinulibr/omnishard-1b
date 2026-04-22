@@ -39,6 +39,7 @@ trait ShardedPaginator
             // Fetch bulk data from each shard once
             $shardResults = DB::connection($connection)
                 ->table($table)
+                ->select($select)
                 ->whereIn('id', $ids)
                 ->get();
 
@@ -61,17 +62,20 @@ trait ShardedPaginator
     private function formatResponse($data, $nextId, $perPage, $table)
     {
         $totalCount = (int) Redis::get("total_{$table}_count") ?: 0;
-
+        $lastId = request()->input('last_id', 0);
+        $fullUrl = $data->count() === $perPage ? request()->fullUrlWithQuery(['last_id' => $nextId]) : request()->fullUrlWithQuery(['last_id' => $lastId]);
         return [
             'data' => $data,
             'meta' => [
                 'next_id' => $nextId,
                 'per_page' => $perPage,
                 'total' => $totalCount,
+                'fetched_total' => $data->count(),
                 'has_more' => $data->count() === $perPage
             ],
             'links' => [
-                'next_url' => $nextId ? request()->fullUrlWithQuery(['last_id' => $nextId]) : null
+                //'next_url' => $nextId ? request()->fullUrlWithQuery(['last_id' => $nextId]) : null
+                'next_url' => $fullUrl
             ]
         ];
     }

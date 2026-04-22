@@ -117,7 +117,7 @@ class UserService
         //$shards = app(\App\Services\ShardingConfig::class)->getAllShards();
         $shards = $this->shardingConfig->getAllShards();
         $table = "users"; 
-        $select = ['*'];
+        $select = ['id', 'name', 'email', 'phone','shard_key','phase_id','created_at'];
         $orderBy = "ASC";
         $totalCount = 'total_users_count';
         return $this->userRepo->getAllUsersPaginated($shards, $table, $perPage, $orderBy, $totalCount, $select);
