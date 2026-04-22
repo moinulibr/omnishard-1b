@@ -29,7 +29,7 @@ class EnsureShardAuth
             if ($shardKey) {
                 // Set connection for the entire request lifecycle
                 config(['database.default' => $shardKey]);
-                \Illuminate\Support\Facades\DB::purge($shardKey);
+                DB::purge($shardKey);
             } else {
                 // Log it for debugging (Optional)
                 // \Log::info("Shard key not found for token hash: " . $hashedToken);
