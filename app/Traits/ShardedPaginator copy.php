@@ -9,6 +9,7 @@ use Illuminate\Pagination\Paginator;
 
 trait ShardedPaginatorOld
 {
+    // not need
     /**
      * Globally handle pagination across multiple shards for any table.
      */
