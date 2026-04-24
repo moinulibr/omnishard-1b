@@ -214,6 +214,65 @@ class UserService
     }
 
     /**
+     * Update the user profile across the sharded architecture.
+     *
+     * @param int $userId The unique identifier of the user.
+     * @param array $newData Data to be updated (e.g., name, password).
+     * @return bool Returns true on successful update.
+     * @throws \Exception If the user is not found or update fails.
+     */
+    public function updateProfileNew(int $userId, array $newData)
+    {
+        // 1. Locate user in Metadata DB
+        $metaUser = DB::connection('metadata')
+            ->table('global_users')
+            ->where('id', $userId)
+            ->first();
+
+        if (!$metaUser) {
+            throw new \Exception("CRITICAL: User ID {$userId} not found in global metadata.");
+        }
+
+        // 2. Prevent Email Update (Scenario: Email is Fixed)
+        if (isset($newData['email'])) {
+            // Log a warning or throw exception based on your policy
+            unset($newData['email']);
+        }
+
+        $shardConnection = "shard_" . $metaUser->shard_id;
+
+        /**
+         * Use database transactions to ensure consistency within the specific shard.
+         * Note: Metadata is not updated here because email is fixed.
+         */
+        try {
+            DB::connection($shardConnection)->beginTransaction();
+
+            // Hash password if it is being updated
+            if (isset($newData['password'])) {
+                $newData['password'] = Hash::make($newData['password']);
+            }
+
+            // Update only the shard database
+            DB::connection($shardConnection)
+                ->table('users')
+                ->where('id', $userId)
+                ->update($newData);
+
+            DB::connection($shardConnection)->commit();
+
+            // Clear user-related cache or sessions if sensitive data changed
+            if (isset($newData['password'])) {
+                $this->revokeUserSessions($userId);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            DB::connection($shardConnection)->rollBack();
+            throw new \Exception("Failed to update shard [{$shardConnection}]: " . $e->getMessage());
+        }
+    }
+    /**
      * Revoke all active sessions in Redis for high security after critical updates
      */
     private function revokeUserSessions($userId)
