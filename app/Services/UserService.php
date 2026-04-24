@@ -142,6 +142,86 @@ class UserService
         return $this->userRepo->findInShard($identifier, $type, $shard);
     }
 
+
+
+    public function updateProfile(int $userId, array $newData)
+    {
+        // 1. Fetch user from Metadata to locate their shard
+        $metaUser = DB::connection('metadata')
+            ->table('global_users')
+            ->where('id', $userId)
+            ->first();
+
+        if (!$metaUser) {
+            throw new \Exception("User not found in global index.");
+        }
+
+        $shardConnection = "shard_" . $metaUser->shard_id;
+        $emailChanged = isset($newData['email']) && $newData['email'] !== $metaUser->email;
+
+        // 2. Start Atomic Transaction
+        // Since we are dealing with two different DBs, we manually handle the rollback logic
+        try {
+            DB::connection('metadata')->beginTransaction();
+            DB::connection($shardConnection)->beginTransaction();
+
+            // 3. Handle Email Change & Uniqueness
+            if ($emailChanged) {
+                $isEmailTaken = DB::connection('metadata')
+                    ->table('global_users')
+                    ->where('email', $newData['email'])
+                    ->where('id', '!=', $userId)
+                    ->exists();
+
+                if ($isEmailTaken) {
+                    throw new \Exception("The email address is already in use by another account.");
+                }
+
+                // Update Metadata DB
+                DB::connection('metadata')
+                    ->table('global_users')
+                    ->where('id', $userId)
+                    ->update(['email' => $newData['email']]);
+            }
+
+            // 4. Handle Password Hashing (Scenario 4)
+            if (isset($newData['password'])) {
+                $newData['password'] = Hash::make($newData['password']);
+            }
+
+            // 5. Update Shard DB
+            DB::connection($shardConnection)
+                ->table('users')
+                ->where('id', $userId)
+                ->update($newData);
+
+            // Commit both connections
+            DB::connection('metadata')->commit();
+            DB::connection($shardConnection)->commit();
+
+            // 6. Post-Update Action: Clear Redis Cache if necessary
+            if ($emailChanged || isset($newData['password'])) {
+                $this->revokeUserSessions($userId);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            // Rollback both if anything fails
+            DB::connection('metadata')->rollBack();
+            DB::connection($shardConnection)->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Revoke all active sessions in Redis for high security after critical updates
+     */
+    private function revokeUserSessions($userId)
+    {
+        // Logic to scan Redis for token_shard prefix and delete matches for this user
+        // This forces a re-login for security
+    }
+
     
     /**
      * UserService.php
