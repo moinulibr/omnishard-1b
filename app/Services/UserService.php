@@ -219,10 +219,11 @@ class UserService
     private function revokeUserSessions($userId)
     {
         // Logic to scan Redis for token_shard prefix and delete matches for this user
+        // Logic to scan Redis for token_shard prefix and delete matches for this user
         // This forces a re-login for security
     }
 
-    
+
     /**
      * UserService.php
      */
