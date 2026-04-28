@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class RegisterController extends Controller
 {
@@ -163,4 +164,19 @@ class RegisterController extends Controller
         }
         return view('airlines.order_confirmation', compact('order'));
     }
+
+
+    public function redisTest(){
+
+        Redis::set('omnishard:status', 'Sharding Project is Live');
+
+        $status = Redis::get('omnishard:status');
+
+        return $status;
+        $redis = Redis::connection('default');
+        $redis->set('key', 'value');
+        $value = $redis->get('key');
+        return $value;
+    }
+
 }
