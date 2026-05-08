@@ -11,11 +11,9 @@ use Illuminate\Support\Facades\Redis;
 class RedisTestIngControllet extends Controller
 {
 
-
     //test airline - duffel
     public function searchAirlines(Request $request)
     {
-
         $origin = 'DAC';
         $destination = 'LHR';
         $date = '2026-06-20';
